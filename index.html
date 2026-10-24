@@ -1,0 +1,564 @@
+<title>Garbage Day</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<style>
+/* Layout: a framed click-through deck. Fixed header + footer, one slide at a time in the stage.
+   Section slides reuse the deck's purple-ruled grid; character slides reuse its offset box + framed portrait. */
+:root{
+  --bg:#231f20;          /* the deck's warm near-black */
+  --bg-deep:#161314;
+  --rule:#4c3e9f;        /* the deck's purple frame */
+  --rule-hi:#a397ff;     /* lifted purple for small text on dark */
+  --ink:#f6f3f8;
+  --ink-soft:#c3bcc8;
+  --glow-blue:#3b5bff; --glow-gold:#f0b543; --glow-violet:#9b3bff;
+  --f-display:"Anton","Impact","Haettenschweiler","Arial Narrow Bold",sans-serif;
+  --f-body:"Source Sans 3","Myriad Pro","Segoe UI",system-ui,sans-serif;
+  --line:3px;
+  --ease:cubic-bezier(.2,.7,.1,1);
+  color-scheme:dark;
+  box-sizing:border-box;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.5;overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--rule-hi);outline-offset:3px}
+
+/* film grain, filled in by script */
+body::after{content:"";position:fixed;inset:-50%;pointer-events:none;z-index:50;background-image:var(--grain,none);opacity:.07;animation:grain 1.2s steps(5) infinite}
+@keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-3%,2%)}40%{transform:translate(2%,-3%)}60%{transform:translate(-2%,-1%)}80%{transform:translate(3%,3%)}100%{transform:translate(0,0)}}
+
+.app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* ---------- chrome ---------- */
+.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:12px;min-height:56px}
+.brand{display:flex;align-items:baseline;gap:12px;min-width:0}
+.brand b{font-family:var(--f-display);font-weight:400;font-size:20px;letter-spacing:.02em;line-height:1}
+.label{font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--rule-hi)}
+.btn{display:inline-flex;align-items:center;gap:8px;background:transparent;border:var(--line) solid var(--rule);padding:6px 14px;cursor:pointer;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;transition:background .25s,border-color .25s}
+.btn:hover{background:var(--rule)}
+.foot{gap:20px}
+.foot .now{flex:0 1 220px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ticks{flex:1;display:flex;gap:4px;min-width:0;max-width:560px}
+.ticks button{flex:1;height:22px;padding:0;border:0;background:none;cursor:pointer;position:relative}
+.ticks button::before{content:"";position:absolute;left:0;right:0;top:50%;height:3px;transform:translateY(-50%);background:rgba(163,151,255,.22);transition:background .3s,height .3s}
+.ticks button.past::before{background:rgba(163,151,255,.55)}
+.ticks button.on::before{background:var(--rule-hi);height:5px}
+.ticks button:hover::before{background:var(--ink)}
+.pager{display:flex;align-items:center;gap:10px}
+.count{font-family:var(--f-display);font-size:18px;letter-spacing:.04em;font-variant-numeric:tabular-nums;min-width:4.6em;text-align:center}
+.count span{color:var(--ink-soft)}
+.arrow{width:44px;height:40px;display:grid;place-items:center;background:transparent;border:var(--line) solid var(--rule);cursor:pointer;transition:background .25s,opacity .25s}
+.arrow:hover{background:var(--rule)}
+.arrow:disabled{opacity:.3;cursor:default;background:transparent}
+.arrow svg{width:18px;height:18px}
+
+/* ---------- stage + slides ---------- */
+.stage{position:relative;min-height:0}
+.slide{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;visibility:hidden;opacity:0;transition:opacity .45s ease,visibility 0s linear .5s;scrollbar-width:thin;scrollbar-color:var(--rule) transparent}
+.slide.is-active{visibility:visible;opacity:1;z-index:2;transition:opacity .6s ease .12s}
+.slide.is-leaving{visibility:visible;opacity:0;z-index:1;transition:opacity .45s ease}
+.slide.is-leaving .px{transition:transform .5s}
+
+/* parallax: pointer drives --mx/--my on :root, scroll drives --sy per element */
+.px{translate:calc(var(--mx,0) * var(--d,10) * 1px) calc(var(--my,0) * var(--d,10) * 1px + var(--sy,0px))}
+
+/* load-in */
+.is-active .rv{animation:rise .95s var(--ease) both;animation-delay:calc(var(--i,0) * 110ms + 180ms)}
+.is-active .rv-img{animation:wipe 1.15s cubic-bezier(.75,0,.2,1) both;animation-delay:calc(var(--i,0) * 110ms + 120ms)}
+.is-active .rv-img img{animation:settle 1.8s var(--ease) both;animation-delay:calc(var(--i,0) * 110ms + 120ms)}
+@keyframes rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@keyframes wipe{from{clip-path:inset(100% 0 0 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes settle{from{scale:1.32;filter:brightness(.4) saturate(.6)}}
+
+/* ---------- title slide ---------- */
+.hero{padding-block:4px 10px}
+.hero-frame{position:relative;height:100%;min-height:320px;overflow:hidden;border:var(--line) solid var(--rule);background:var(--bg-deep);isolation:isolate}
+.hero-bg{position:absolute;inset:0}
+.hero-bg img{width:100%;height:100%;object-fit:cover;object-position:50% 30%;scale:1.12}
+.hero-glow{position:absolute;inset:-20%;mix-blend-mode:screen;opacity:.38;pointer-events:none;
+  background:radial-gradient(40% 35% at 30% 40%,var(--glow-blue),transparent 70%),radial-gradient(35% 30% at 70% 55%,var(--glow-gold),transparent 70%),radial-gradient(45% 40% at 55% 30%,var(--glow-violet),transparent 70%);
+  animation:drift 14s ease-in-out infinite alternate}
+@keyframes drift{0%{transform:rotate(0deg) scale(1)}50%{transform:rotate(8deg) scale(1.08)}100%{transform:rotate(-6deg) scale(1.02)}}
+.hero-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(22,19,20,0) 45%,rgba(22,19,20,.75) 100%)}
+.hero-logo{position:absolute;left:50%;top:56%;width:min(62%,780px);transform:translate(-50%,-50%) rotate(-2deg);filter:drop-shadow(0 18px 40px rgba(0,0,0,.55))}
+.hero.is-active .hero-logo{animation:logoIn 1.4s var(--ease) both .35s}
+@keyframes logoIn{from{opacity:0;transform:translate(-50%,-44%) rotate(-7deg) scale(.86);filter:blur(10px) drop-shadow(0 18px 40px rgba(0,0,0,.55))}}
+.hero.is-active .hero-bg{animation:bgIn 2.4s var(--ease) both}
+@keyframes bgIn{from{opacity:0;transform:scale(1.12)}}
+.hero-meta{position:absolute;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;padding:clamp(16px,3vw,36px)}
+.hero-meta p{margin:0;max-width:30ch}
+.hero-meta .kicker{font-family:var(--f-display);font-size:clamp(20px,2.2vw,30px);line-height:1.1;letter-spacing:.02em;text-transform:uppercase}
+.hero-meta .label{display:block;margin-bottom:6px}
+.begin{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.begin:hover{background:var(--rule-hi);border-color:var(--rule-hi)}
+.hint{font-size:12px;color:var(--ink-soft);margin-top:8px !important}
+
+/* ---------- section slides ---------- */
+.sec{padding-block:4px 10px}
+.sec-grid{height:100%;display:grid;gap:var(--line);background:var(--rule);border:var(--line) solid var(--rule);
+  grid-template-columns:minmax(0,.74fr) minmax(0,1fr);grid-template-rows:repeat(3,minmax(0,1fr));grid-template-areas:"t a" "x b" "x c"}
+.cell{background:var(--bg);min-width:0;min-height:0;position:relative;overflow:hidden}
+.cell-title{grid-area:t;display:grid;place-items:center;container-type:size}
+.cell-title h2{margin:0;font-family:var(--f-display);font-weight:400;line-height:.9;letter-spacing:.005em;text-transform:uppercase;font-size:min(calc(var(--fs) * 1cqw),66cqh)}
+.cell-text{grid-area:x;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--rule) transparent}
+.cell-text .in{padding:clamp(20px,2.6vw,44px);max-width:62ch}
+.cell-text p{margin:0 0 1em;font-size:clamp(15px,.55vw + 10px,19px);line-height:1.55;color:var(--ink)}
+.cell-text.dense p{font-size:clamp(14px,.4vw + 9.5px,17px);line-height:1.55}
+.cell-text p:last-child{margin-bottom:0}
+.lead{font-family:var(--f-display);font-size:clamp(20px,1.5vw + 6px,30px) !important;line-height:1.12 !important;text-transform:uppercase;letter-spacing:.01em;color:var(--rule-hi) !important}
+.cell-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;scale:1.12}
+.cell-img.a{grid-area:a}.cell-img.b{grid-area:b}.cell-img.c{grid-area:c}
+
+/* ---------- character slides ---------- */
+.char{display:grid;grid-template-columns:minmax(0,1fr);place-items:center;padding-block:8px 16px}
+.char-wrap{position:relative;width:min(1080px,100%,calc((100svh - 190px) * 1.477));aspect-ratio:610/413;container-type:inline-size}
+.char-box{position:absolute;left:0;top:0;width:54.6%;height:85%;border:var(--line) solid var(--rule);background:var(--bg);padding:4.4cqw 10cqw 3cqw 4.6cqw;overflow:hidden}
+.char-box .label{font-size:max(10px,1.05cqw)}
+.char-box h2{margin:.5cqw 0 2.2cqw;font-family:var(--f-display);font-weight:400;text-transform:uppercase;line-height:.92;font-size:calc(var(--fs) * 1cqw);text-wrap:balance}
+.char-box p{margin:0;font-size:clamp(13px,1.75cqw,19px);line-height:1.5;max-width:46ch}
+.char-img{position:absolute;left:49.2%;top:25.2%;width:50.8%;height:74.8%;margin:0;border:var(--line) solid var(--rule);background:var(--bg-deep);overflow:hidden;box-shadow:0 30px 60px -30px rgba(0,0,0,.8)}
+.char-img img{width:100%;height:100%;object-fit:cover;scale:1.1;display:block}
+
+/* ---------- concept art ---------- */
+.art{display:grid;grid-template-columns:minmax(0,1fr);place-items:center;padding-block:8px 16px}
+.art-wrap{width:min(1120px,100%);display:grid;gap:clamp(18px,3vh,36px)}
+.art-title{justify-self:start;border:var(--line) solid var(--rule);padding:clamp(10px,1.6vw,20px) clamp(16px,2.4vw,30px)}
+.art-title h2{margin:0;font-family:var(--f-display);font-weight:400;font-size:clamp(40px,5.4vw,80px);line-height:.95;text-transform:uppercase}
+.art-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(10px,1.6vw,22px);width:min(100%,calc((100svh - 400px) * .773 * 4 + 66px));justify-self:center}
+.art-card{position:relative;aspect-ratio:1275/1650;max-width:100%;padding:0;border:var(--line) solid var(--rule);background:#fff;cursor:zoom-in;overflow:hidden}
+.art-card img{width:100%;height:100%;object-fit:cover;display:block;scale:1.04;transition:scale .6s var(--ease)}
+.art-card:hover img{scale:1.1}
+.art-card span{position:absolute;left:0;bottom:0;background:var(--rule);color:var(--ink);font-size:11px;font-weight:700;letter-spacing:.16em;padding:4px 8px;font-variant-numeric:tabular-nums}
+.art-note{margin:0;color:var(--ink-soft);font-size:14px}
+
+/* ---------- overlays ---------- */
+.overlay{position:fixed;inset:0;z-index:40;background:rgba(22,19,20,.94);backdrop-filter:blur(6px);display:grid;opacity:0;transition:opacity .3s;
+  padding:max(20px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(20px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.overlay.open{opacity:1}
+.overlay .close{position:absolute;top:max(14px,env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px))}
+.index-inner{align-self:center;justify-self:center;width:min(980px,100%);display:grid;gap:28px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));max-height:100%;overflow:auto;padding-top:48px}
+.index-col h3{margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--rule-hi)}
+.index-col ol{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.index-col button{width:100%;display:flex;gap:14px;align-items:baseline;text-align:left;background:none;border:0;border-bottom:1px solid rgba(76,62,159,.5);padding:8px 2px;cursor:pointer;font-family:var(--f-display);font-size:clamp(22px,2.4vw,30px);text-transform:uppercase;line-height:1.1;transition:color .2s,padding .3s var(--ease)}
+.index-col button small{font-family:var(--f-body);font-size:12px;font-weight:700;color:var(--ink-soft);font-variant-numeric:tabular-nums;min-width:2ch}
+.index-col button:hover,.index-col button[aria-current="true"]{color:var(--rule-hi);padding-left:10px}
+.lightbox figure{margin:0;align-self:center;justify-self:center;display:grid;gap:10px;justify-items:center;max-height:100%}
+.lightbox img{max-height:calc(100svh - 140px);max-width:100%;border:var(--line) solid var(--rule);background:#fff}
+.lightbox .lb-nav{display:flex;gap:10px;align-items:center}
+
+/* ---------- compact layout: phones, narrow windows, short landscape ---------- */
+@media (max-width:860px),(max-height:560px){
+  .foot .now{display:none}
+  .brand .label{display:none}
+  .sec-grid{height:auto;grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:"t" "a" "x" "b" "c"}
+  .cell-title{container-type:inline-size;padding:28px 16px 22px}
+  .cell-title h2{font-size:min(calc(var(--fs) * 1cqw),120px)}
+  .cell-text{overflow:visible}
+  .cell-img{aspect-ratio:16/10}
+  .cell-img img{scale:1.2}
+  .char{place-items:start center}
+  .char-wrap{aspect-ratio:auto;width:100%;max-width:560px;padding-bottom:8px}
+  .char-box{position:relative;width:100%;height:auto;padding:24px 22px 76px}
+  .char-box h2{font-size:min(calc(var(--fs) * 1.8cqw),88px);margin:6px 0 14px}
+  .char-box p{font-size:16px}
+  .char-box .label{font-size:11px}
+  .char-img{position:relative;left:auto;top:auto;width:82%;height:auto;aspect-ratio:1;margin:-56px 0 0 auto}
+  .art{place-items:start center}
+  .art-grid{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+  .hero-logo{width:min(86%,560px);top:46%}
+}
+@media (max-width:520px){
+  .foot{gap:12px}
+  .count{min-width:3.8em;font-size:16px}
+  .arrow{width:40px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none !important;transition:none !important}
+  .px{translate:none}
+}
+</style>
+
+<div class="app">
+  <header class="bar">
+    <div class="brand"><b>GARBAGE DAY</b><span class="label">Feature film pitch</span></div>
+    <button class="btn" id="open-index" aria-haspopup="dialog">Index</button>
+  </header>
+
+  <main class="stage" id="stage">
+
+    <!-- 01 TITLE -->
+    <section class="slide hero is-active" data-id="title" data-label="Title" aria-label="Garbage Day title">
+      <div class="hero-frame">
+        <div class="hero-bg px" style="--d:-14"><img src="img/key-bg.webp" alt="Key art: a trash can bursting with violet light, black tentacles spilling out"></div>
+        <div class="hero-glow" aria-hidden="true"></div>
+        <div class="hero-shade" aria-hidden="true"></div>
+        <img class="hero-logo px" style="--d:22" src="img/logo.webp" alt="Garbage Day">
+        <div class="hero-meta">
+          <p class="rv" style="--i:4"><span class="label">Feature film pitch</span><span class="kicker">A dark comedy horror film</span></p>
+          <div class="rv" style="--i:6">
+            <button class="btn begin" data-go="1">Begin <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+            <p class="hint">Arrow keys, swipe, or the buttons below</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 INTRO -->
+    <section class="slide sec" data-id="intro" data-label="Intro">
+      <div class="sec-grid">
+        <div class="cell cell-title"><h2 class="rv px" style="--i:0;--fs:26;--d:6">Intro</h2></div>
+        <figure class="cell cell-img a rv-img" style="--i:1;margin:0"><img class="px" style="--d:-12" src="img/intro-field.webp" alt="Reference still: a figure running across a ruined, red-stained yard"></figure>
+        <div class="cell cell-text rv" style="--i:3"><div class="in">
+          <p>GARBAGE DAY is a dark comedy horror film about friendship, failure, and the pursuit of becoming the best version of yourself. Vinni is broke, unemployed, and perfectly content with blaming everybody for the disaster his life has become. Then he discovers something impossible… a talking trash can. Charming, lonely, and strangely supportive, the trash can quickly becomes the best friend Vinni never knew he needed. There’s only one problem. It’s hungry. For something more than trash.</p>
+        </div></div>
+        <figure class="cell cell-img b rv-img" style="--i:2;margin:0"><img class="px" style="--d:-10" src="img/intro-duo.webp" alt="Reference still: two stoners staring up in the dark, one holding a flashlight"></figure>
+        <figure class="cell cell-img c rv-img" style="--i:3;margin:0"><img class="px" style="--d:-14" src="img/intro-audrey.webp" alt="Reference still: a man facing a giant carnivorous plant in a shop"></figure>
+      </div>
+    </section>
+
+    <!-- 03 SYNOPSIS -->
+    <section class="slide sec" data-id="synopsis" data-label="Synopsis">
+      <div class="sec-grid">
+        <div class="cell cell-title"><h2 class="rv px" style="--i:0;--fs:16.5;--d:6">Synopsis</h2></div>
+        <figure class="cell cell-img a rv-img" style="--i:1;margin:0"><img class="px" style="--d:-12" src="img/syn-roots.webp" alt="Reference still: a body consumed by roots spreading across a concrete wall"></figure>
+        <div class="cell cell-text dense rv" style="--i:3"><div class="in">
+          <p>Vinni is thirty something, unemployed, months behind on rent and living in a filthy apartment with his increasingly frustrated roommate, Sam. Convinced that success is always just around the corner, Vinni spends his days watching television, smoking cigarettes, getting high and avoiding responsibility. Then he discovers a trash can that can talk.</p>
+          <p>Sophisticated, sarcastic, and speaking with a British accent, the Trash Can and Vinni form an unlikely friendship. The Trash Can listens to Vinni’s problems, encourages his budding relationship with his neighbor Emma, and gives him something he desperately needs: someone who believes in him.</p>
+          <p>Then it gets hungry. As black roots begin spreading beneath the trash can, the creatures appetite grows increasingly disturbing. Vinni realizes his new friend isn’t what it appears to be. When the Trash Can consumes Sam and kidnaps Emma, Vinni is forced to take responsibility.</p>
+          <p>Armed with a katana, a flamethrower, and his dangerously enthusiastic drug dealer Razor, Vinni descends into the impossible world living inside the trash can to save Emma and confront the creature he once called his friend.</p>
+          <p>What begins as the story of a loser discovering a talking trash can becomes a surreal bloody battle between a man desperate to change and a monster determined to never let him go.</p>
+        </div></div>
+        <figure class="cell cell-img b rv-img" style="--i:2;margin:0"><img class="px" style="--d:-10" src="img/syn-groceries.webp" alt="Reference still: a man taping a handwritten sign to a corner grocery shutter"></figure>
+        <figure class="cell cell-img c rv-img" style="--i:3;margin:0"><img class="px" style="--d:-14" src="img/syn-flesh.webp" alt="Reference still: a glistening red organic mass"></figure>
+      </div>
+    </section>
+
+    <!-- 04 TONE -->
+    <section class="slide sec" data-id="tone" data-label="Tone">
+      <div class="sec-grid">
+        <div class="cell cell-title"><h2 class="rv px" style="--i:0;--fs:33;--d:6">Tone</h2></div>
+        <figure class="cell cell-img a rv-img" style="--i:1;margin:0"><img class="px" style="--d:-12" src="img/tone-city.webp" alt="Reference still: a city skyline sinking into a sea of garbage"></figure>
+        <div class="cell cell-text rv" style="--i:3"><div class="in">
+          <p class="lead">Absurd, Hilarious, Violent, Weirdly Heartfelt.</p>
+          <p>GARBAGE DAY sits between deadpan comedy and grotesque horror. The humor comes from characters treating impossible situations with complete sincerity - whether its Vinni is trying to monetize a talking trash can, Razor proudly showing off his flamethrower, or an ancient supernatural creature complaining Chinese food is “far too seasoned”. As the story progresses, the world becomes more disturbing. Black roots crawl through concrete. Beautiful hypnotic lights hide something predatory. Human bodies disappear into an impossible void. The ordinary neighborhood garage slowly transforms into an entrance to another world.</p>
+        </div></div>
+        <figure class="cell cell-img b rv-img" style="--i:2;margin:0"><img class="px" style="--d:-10" src="img/tone-fire.webp" alt="Reference still: a terrified woman lit orange beside a toothed creature"></figure>
+        <figure class="cell cell-img c rv-img" style="--i:3;margin:0"><img class="px" style="--d:-14" src="img/tone-plant.webp" alt="Reference still: a giant plant creature opening its jaws at a woman"></figure>
+      </div>
+    </section>
+
+    <!-- 05 VISUAL -->
+    <section class="slide sec" data-id="visual" data-label="Visual">
+      <div class="sec-grid">
+        <div class="cell cell-title"><h2 class="rv px" style="--i:0;--fs:22;--d:6">Visual</h2></div>
+        <figure class="cell cell-img a rv-img" style="--i:1;margin:0"><img class="px" style="--d:-12" src="img/vis-creature.webp" alt="Reference still: a man in a grimy room with a fleshy creature behind him"></figure>
+        <div class="cell cell-text rv" style="--i:3"><div class="in">
+          <p>GARBAGE DAY is dirty, colorful, and faded. A cramped apartment overflowing with junk, cigarette smoke, dirty dishes, and laundry. Then something beautiful grows from the filth. The Trash Can emits impossible colors - deep blues, warm golds, rich violets moving like liquid stained glass. Inside is an endless junkyard beneath a dead sky: mountains of abandoned cars, televisions, and pieces of forgotten lives. The deeper Vinni enters the creatures world, the further his reality deteriorates.</p>
+        </div></div>
+        <figure class="cell cell-img b rv-img" style="--i:2;margin:0"><img class="px" style="--d:-10" src="img/vis-clerks.webp" alt="Reference still: two clerks behind a cluttered convenience store counter"></figure>
+        <figure class="cell cell-img c rv-img" style="--i:3;margin:0"><img class="px" style="--d:-14" src="img/vis-shimmer.webp" alt="Reference still: a woman facing a shimmering organic tunnel"></figure>
+      </div>
+    </section>
+
+    <!-- 06 IMPACT -->
+    <section class="slide sec" data-id="impact" data-label="Impact">
+      <div class="sec-grid">
+        <div class="cell cell-title"><h2 class="rv px" style="--i:0;--fs:22;--d:6">Impact</h2></div>
+        <figure class="cell cell-img a rv-img" style="--i:1;margin:0"><img class="px" style="--d:-12" src="img/imp-cans.webp" alt="Reference still: three neighbors peering over garbage cans"></figure>
+        <div class="cell cell-text rv" style="--i:3"><div class="in">
+          <p>At its core, GARBAGE DAY is about growing up. Vinni has spent his life avoiding responsibility and waiting for something to come fix all his problems. When the Trash Can comes along, he thinks he finally found it. Instead, it forces him to confront the person he’s become and decide who and what really matters to him. Beneath the comedy, horror, and absurdity, GARBAGE DAY is a story about friendship, responsibility, and striving for a better version of yourself.</p>
+        </div></div>
+        <figure class="cell cell-img b rv-img" style="--i:2;margin:0"><img class="px" style="--d:-10" src="img/imp-surgery.webp" alt="Reference still: a bloody scene on an operating table"></figure>
+        <figure class="cell cell-img c rv-img" style="--i:3;margin:0"><img class="px" style="--d:-14" src="img/imp-fire.webp" alt="Reference still: a man carrying someone out of a wall of fire"></figure>
+      </div>
+    </section>
+
+    <!-- 07–13 CHARACTERS -->
+    <section class="slide char" data-id="vinni" data-label="Vinni">
+      <div class="char-wrap">
+        <div class="char-box rv" style="--i:0"><span class="label">Character 01 / 07</span><h2 class="px" style="--fs:11;--d:5">Vinni</h2>
+          <p>Lazy, funny, and always looking for the easy way out. Vinni is broke, unemployed, in debt, and convinced his next big break is right around the corner. When he discovers the trash can, he’s convinced his life will change. Instead, it forces him to face his problems and take responsibility for the people he cares about.</p></div>
+        <figure class="char-img rv-img" style="--i:2"><img class="px" style="--d:-10;object-position:50% 12%" src="img/vinni.webp" alt="Casting reference for Vinni"></figure>
+      </div>
+    </section>
+
+    <section class="slide char" data-id="sam" data-label="Sam">
+      <div class="char-wrap">
+        <div class="char-box rv" style="--i:0"><span class="label">Character 02 / 07</span><h2 class="px" style="--fs:11;--d:5">Sam</h2>
+          <p>Vinni’s roommate and best friend. Sam is responsible, hardworking, and constantly frustrated with Vinni’s lack of direction. But underneath all the arguing, he genuinely cares about him. He pushes Vinni to grow up and get his life together even when Vinni doesn’t want to hear it.</p></div>
+        <figure class="char-img rv-img" style="--i:2"><img class="px" style="--d:-10" src="img/sam.webp" alt="Casting reference for Sam"></figure>
+      </div>
+    </section>
+
+    <section class="slide char" data-id="trash-can" data-label="The Trash Can">
+      <div class="char-wrap">
+        <div class="char-box rv" style="--i:0"><span class="label">Character 03 / 07</span><h2 class="px" style="--fs:5.6;--d:5">The Trash Can</h2>
+          <p>Polite. Intelligent. Lonely. Manipulative. An impossibly sophisticated creature with a British accent, dry sense of humor, and desperate desire for companionship. As roots spread and its appetite grows, affection becomes possession and friendship becomes dependency.</p></div>
+        <figure class="char-img rv-img" style="--i:2"><img class="px" style="--d:-10;object-position:50% 25%" src="img/trashcan.webp" alt="Voice and character reference for the Trash Can"></figure>
+      </div>
+    </section>
+
+    <section class="slide char" data-id="emma" data-label="Emma">
+      <div class="char-wrap">
+        <div class="char-box rv" style="--i:0"><span class="label">Character 04 / 07</span><h2 class="px" style="--fs:7.5;--d:5">Emma</h2>
+          <p>Warm, funny, alternative, and down to earth. Emma lives in Vinni’s apartment building with her dog, Charlie. She sees something good in Vinni that he doesn’t always see in himself. As they grow closer, Emma gives Vinni something worth fighting for and becomes an important part of his journey toward finally getting his shit together.</p></div>
+        <figure class="char-img rv-img" style="--i:2"><img class="px" style="--d:-10" src="img/emma.webp" alt="Casting reference for Emma"></figure>
+      </div>
+    </section>
+
+    <section class="slide char" data-id="razor" data-label="Razor">
+      <div class="char-wrap">
+        <div class="char-box rv" style="--i:0"><span class="label">Character 05 / 07</span><h2 class="px" style="--fs:7.5;--d:5">Razor</h2>
+          <p>Vinni’s drug dealer and friend. Tattooed, gold toothed, and obsessed with weapons. Razor is cool, unpredictable, and always ready for a fight. When Vinni needs help taking down the Trash Can, Razor doesn’t hesitate. He grabs his weapons and joins the fight.</p></div>
+        <figure class="char-img rv-img" style="--i:2"><img class="px" style="--d:-10;object-position:62% 50%" src="img/razor.webp" alt="Casting reference for Razor"></figure>
+      </div>
+    </section>
+
+    <section class="slide char" data-id="greta" data-label="Greta">
+      <div class="char-wrap">
+        <div class="char-box rv" style="--i:0"><span class="label">Character 06 / 07</span><h2 class="px" style="--fs:7.5;--d:5">Greta</h2>
+          <p>Vinni’s elderly neighbor. Greta is loud, stubborn, and always complaining about something. She is not afraid to speak her mind and stand in anyone’s way, even when she probably should.</p></div>
+        <figure class="char-img rv-img" style="--i:2"><img class="px" style="--d:-10" src="img/greta.webp" alt="Casting reference for Greta"></figure>
+      </div>
+    </section>
+
+    <section class="slide char" data-id="anthony" data-label="Anthony Perkins">
+      <div class="char-wrap">
+        <div class="char-box rv" style="--i:0"><span class="label">Character 07 / 07</span><h2 class="px" style="--fs:5.4;--d:5">Anthony Perkins</h2>
+          <p>A self help guru and podcaster Vinni constantly watches on TV. Anthony preaches about success, discipline, and taking responsibility for your life. His advice follows Vinni throughout the story and eventually pushes him to take action.</p></div>
+        <figure class="char-img rv-img" style="--i:2"><img class="px" style="--d:-10" src="img/anthony.webp" alt="Casting reference for Anthony Perkins"></figure>
+      </div>
+    </section>
+
+    <!-- 14 CONCEPT ART -->
+    <section class="slide art" data-id="concept-art" data-label="Concept Art">
+      <div class="art-wrap">
+        <div class="art-title rv" style="--i:0"><h2 class="px" style="--d:5">Concept Art</h2></div>
+        <div class="art-grid">
+          <button class="art-card rv-img" style="--i:1" data-art="0" aria-label="Enlarge concept art 1"><img class="px" style="--d:-6" src="img/art-1.webp" alt="Concept sketch: an ordinary wheelie trash can"><span>01</span></button>
+          <button class="art-card rv-img" style="--i:2" data-art="1" aria-label="Enlarge concept art 2"><img class="px" style="--d:-6" src="img/art-2.webp" alt="Concept sketch: the trash can erupting with tentacles and blue light"><span>02</span></button>
+          <button class="art-card rv-img" style="--i:3" data-art="2" aria-label="Enlarge concept art 3"><img class="px" style="--d:-6" src="img/art-3.webp" alt="Concept sketch: the trash can running on human legs"><span>03</span></button>
+          <button class="art-card rv-img" style="--i:4" data-art="3" aria-label="Enlarge concept art 4"><img class="px" style="--d:-6" src="img/art-4.webp" alt="Concept sketch: the glowing trash can rooted into the ground"><span>04</span></button>
+        </div>
+        <p class="art-note rv" style="--i:5">Select a sketch to view it larger.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bar foot">
+    <span class="label now" id="now">Title</span>
+    <nav class="ticks" id="ticks" aria-label="Slides"></nav>
+    <div class="pager">
+      <button class="arrow" id="prev" aria-label="Previous slide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>
+      <div class="count" id="count">01 <span>/ 14</span></div>
+      <button class="arrow" id="next" aria-label="Next slide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
+  </footer>
+</div>
+
+<div class="overlay" id="index" role="dialog" aria-modal="true" aria-label="Slide index" hidden>
+  <button class="btn close" data-close>Close</button>
+  <div class="index-inner" id="index-inner"></div>
+</div>
+
+<div class="overlay lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Concept art" hidden>
+  <button class="btn close" data-close>Close</button>
+  <figure>
+    <img id="lb-img" src="" alt="">
+    <div class="lb-nav">
+      <button class="arrow" id="lb-prev" aria-label="Previous sketch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>
+      <span class="count" id="lb-count">01 <span>/ 04</span></span>
+      <button class="arrow" id="lb-next" aria-label="Next sketch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
+  </figure>
+</div>
+
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const N = slides.length;
+  const $ = id => document.getElementById(id);
+  const pad = n => String(n).padStart(2, '0');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let cur = 0;
+
+  // ticks + index
+  const ticks = $('ticks');
+  slides.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.setAttribute('aria-label', `Go to ${s.dataset.label}`);
+    b.onclick = () => go(i);
+    ticks.appendChild(b);
+  });
+  const groups = [['The pitch', 0, 6], ['Characters', 6, 13], ['Development', 13, 14]];
+  const inner = $('index-inner');
+  groups.forEach(([name, a, b]) => {
+    const col = document.createElement('div'); col.className = 'index-col';
+    col.innerHTML = `<h3>${name}</h3><ol></ol>`;
+    for (let i = a; i < b; i++) {
+      const li = document.createElement('li');
+      li.innerHTML = `<button data-i="${i}"><small>${pad(i + 1)}</small>${slides[i].dataset.label}</button>`;
+      li.firstChild.onclick = () => { closeOverlay($('index')); go(i); };
+      col.querySelector('ol').appendChild(li);
+    }
+    inner.appendChild(col);
+  });
+
+  function ui() {
+    $('count').innerHTML = `${pad(cur + 1)} <span>/ ${pad(N)}</span>`;
+    $('now').textContent = slides[cur].dataset.label;
+    $('prev').disabled = cur === 0;
+    $('next').disabled = cur === N - 1;
+    [...ticks.children].forEach((t, i) => { t.className = i === cur ? 'on' : i < cur ? 'past' : ''; t.setAttribute('aria-current', i === cur); });
+    inner.querySelectorAll('button[data-i]').forEach(b => b.setAttribute('aria-current', +b.dataset.i === cur));
+  }
+
+  function go(n) {
+    n = Math.max(0, Math.min(N - 1, n));
+    if (n === cur) return;
+    const prev = slides[cur], next = slides[n];
+    prev.classList.remove('is-active');
+    prev.classList.add('is-leaving');
+    setTimeout(() => prev.classList.remove('is-leaving'), 520);
+    next.scrollTop = 0;
+    next.classList.add('is-active');
+    cur = n;
+    ui();
+    scrollPx();
+    try { history.replaceState(null, '', '#' + next.dataset.id); } catch (e) {}
+  }
+
+  // start from hash
+  const start = slides.findIndex(s => '#' + s.dataset.id === location.hash);
+  if (start > 0) { slides[0].classList.remove('is-active'); slides[start].classList.add('is-active'); cur = start; }
+  ui();
+  addEventListener('hashchange', () => {
+    const i = slides.findIndex(s => '#' + s.dataset.id === location.hash);
+    if (i >= 0) go(i);
+  });
+
+  $('prev').onclick = () => go(cur - 1);
+  $('next').onclick = () => go(cur + 1);
+  document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(+b.dataset.go));
+
+  // overlays
+  let lastFocus = null;
+  function openOverlay(el) {
+    lastFocus = document.activeElement;
+    el.hidden = false;
+    requestAnimationFrame(() => el.classList.add('open'));
+    el.querySelector('[data-close]').focus();
+  }
+  function closeOverlay(el) {
+    el.classList.remove('open');
+    setTimeout(() => { el.hidden = true; }, reduced ? 0 : 300);
+    if (lastFocus) lastFocus.focus();
+  }
+  const openOv = () => [$('index'), $('lightbox')].find(o => !o.hidden);
+  $('open-index').onclick = () => openOverlay($('index'));
+  document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => closeOverlay(b.closest('.overlay')));
+  document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) closeOverlay(o); }));
+
+  // lightbox
+  const arts = [...document.querySelectorAll('.art-card img')];
+  let ai = 0;
+  function showArt(i) {
+    ai = (i + arts.length) % arts.length;
+    $('lb-img').src = arts[ai].src; $('lb-img').alt = arts[ai].alt;
+    $('lb-count').innerHTML = `${pad(ai + 1)} <span>/ ${pad(arts.length)}</span>`;
+  }
+  document.querySelectorAll('.art-card').forEach(c => c.onclick = () => { showArt(+c.dataset.art); openOverlay($('lightbox')); });
+  $('lb-prev').onclick = () => showArt(ai - 1);
+  $('lb-next').onclick = () => showArt(ai + 1);
+
+  // keyboard
+  addEventListener('keydown', e => {
+    const ov = openOv();
+    if (ov) {
+      if (e.key === 'Escape') closeOverlay(ov);
+      if (ov.id === 'lightbox' && e.key === 'ArrowRight') showArt(ai + 1);
+      if (ov.id === 'lightbox' && e.key === 'ArrowLeft') showArt(ai - 1);
+      return;
+    }
+    if (['ArrowRight', 'PageDown'].includes(e.key) || (e.key === ' ' && e.target === document.body)) { e.preventDefault(); go(cur + 1); }
+    else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); go(cur - 1); }
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(N - 1);
+  });
+
+  // wheel: scroll inside content first, then turn the page
+  function canScroll(el, dy) {
+    while (el && el !== document.body) {
+      if (el.scrollHeight > el.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(el).overflowY)) {
+        if (dy > 0 && el.scrollTop + el.clientHeight < el.scrollHeight - 2) return true;
+        if (dy < 0 && el.scrollTop > 2) return true;
+      }
+      if (el.classList && el.classList.contains('slide')) break;
+      el = el.parentElement;
+    }
+    return false;
+  }
+  let wheelLock = 0, wheelAcc = 0;
+  $('stage').addEventListener('wheel', e => {
+    if (canScroll(e.target, e.deltaY)) { wheelAcc = 0; return; }
+    const now = Date.now();
+    if (now < wheelLock) return;
+    wheelAcc += e.deltaY;
+    if (Math.abs(wheelAcc) > 60) { go(cur + Math.sign(wheelAcc)); wheelAcc = 0; wheelLock = now + 900; }
+  }, { passive: true });
+
+  // swipe
+  let tx = 0, ty = 0;
+  $('stage').addEventListener('touchstart', e => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, { passive: true });
+  $('stage').addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.4) go(cur + (dx < 0 ? 1 : -1));
+  }, { passive: true });
+
+  if (reduced) return;
+
+  // pointer parallax (eased)
+  const root = document.documentElement.style;
+  let mx = 0, my = 0, tmx = 0, tmy = 0, raf = 0;
+  if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    addEventListener('pointermove', e => {
+      tmx = (e.clientX / innerWidth - .5) * 2;
+      tmy = (e.clientY / innerHeight - .5) * 2;
+      if (!raf) raf = requestAnimationFrame(tick);
+    });
+    document.addEventListener('pointerleave', () => { tmx = 0; tmy = 0; if (!raf) raf = requestAnimationFrame(tick); });
+  }
+  function tick() {
+    mx += (tmx - mx) * .08; my += (tmy - my) * .08;
+    root.setProperty('--mx', mx.toFixed(4)); root.setProperty('--my', my.toFixed(4));
+    raf = (Math.abs(tmx - mx) > .001 || Math.abs(tmy - my) > .001) ? requestAnimationFrame(tick) : 0;
+  }
+
+  // scroll parallax for images inside a scrolling slide (phones, short windows)
+  function scrollPx() {
+    const s = slides[cur];
+    if (s.scrollHeight <= s.clientHeight + 4) return;
+    const box = s.getBoundingClientRect(), mid = box.top + box.height / 2;
+    s.querySelectorAll('.cell-img img, .char-img img').forEach(img => {
+      const r = img.parentElement.getBoundingClientRect();
+      img.style.setProperty('--sy', ((r.top + r.height / 2 - mid) * -0.06).toFixed(1) + 'px');
+    });
+  }
+  slides.forEach(s => s.addEventListener('scroll', () => requestAnimationFrame(scrollPx), { passive: true }));
+  addEventListener('resize', scrollPx);
+  scrollPx();
+
+  // film grain tile
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 140;
+    const x = c.getContext('2d'), d = x.createImageData(140, 140);
+    for (let i = 0; i < d.data.length; i += 4) { const v = Math.random() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; }
+    x.putImageData(d, 0, 0);
+    document.body.style.setProperty('--grain', `url(${c.toDataURL()})`);
+  } catch (e) {}
+})();
+</script>
