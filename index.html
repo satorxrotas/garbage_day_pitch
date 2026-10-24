@@ -28,6 +28,8 @@
   box-sizing:border-box;
 }
 *,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none !important}
+img{max-width:100%}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.5;overflow:hidden;-webkit-font-smoothing:antialiased}
 button{font:inherit;color:inherit}
@@ -68,6 +70,20 @@ body::after{content:"";position:fixed;inset:-50%;pointer-events:none;z-index:50;
 .slide.is-active{visibility:visible;opacity:1;z-index:2;transition:opacity .6s ease .12s}
 .slide.is-leaving{visibility:visible;opacity:0;z-index:1;transition:opacity .45s ease}
 .slide.is-leaving .px{transition:transform .5s}
+.slide.from-right{animation:inRight .7s cubic-bezier(.2,.7,.1,1) both}
+.slide.from-left{animation:inLeft .7s cubic-bezier(.2,.7,.1,1) both}
+@keyframes inRight{from{transform:translate3d(48px,0,0)}to{transform:none}}
+@keyframes inLeft{from{transform:translate3d(-48px,0,0)}to{transform:none}}
+.stage{touch-action:pan-y}
+.slide.dragging{will-change:transform}
+.swipe-hint{display:none}
+@media (hover:none) and (pointer:coarse){
+  .hint{display:none}
+  .swipe-hint{display:inline-flex;align-items:center;gap:8px;margin-top:10px;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft)}
+  .swipe-hint i{display:block;width:26px;height:2px;background:var(--rule-hi);position:relative;animation:nudge 1.8s ease-in-out infinite}
+  .swipe-hint i::after{content:"";position:absolute;right:-1px;top:-3px;width:8px;height:8px;border-top:2px solid var(--rule-hi);border-right:2px solid var(--rule-hi);transform:rotate(45deg)}
+  @keyframes nudge{0%,100%{transform:translateX(0)}50%{transform:translateX(8px)}}
+}
 
 /* parallax: pointer drives --mx/--my on :root, scroll drives --sy per element */
 .px{translate:calc(var(--mx,0) * var(--d,10) * 1px) calc(var(--my,0) * var(--d,10) * 1px + var(--sy,0px))}
@@ -209,6 +225,7 @@ body::after{content:"";position:fixed;inset:-50%;pointer-events:none;z-index:50;
           <div class="rv" style="--i:6">
             <button class="btn begin" data-go="1">Begin <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
             <p class="hint">Arrow keys, swipe, or the buttons below</p>
+            <p class="swipe-hint">Swipe to begin <i aria-hidden="true"></i></p>
           </div>
         </div>
       </div>
@@ -428,11 +445,19 @@ body::after{content:"";position:fixed;inset:-50%;pointer-events:none;z-index:50;
     n = Math.max(0, Math.min(N - 1, n));
     if (n === cur) return;
     const prev = slides[cur], next = slides[n];
+    const dir = n > cur ? 'from-right' : 'from-left';
     prev.classList.remove('is-active');
     prev.classList.add('is-leaving');
-    setTimeout(() => prev.classList.remove('is-leaving'), 520);
+    setTimeout(() => {
+      prev.classList.remove('is-leaving');
+      prev.style.transform = ''; prev.style.opacity = ''; prev.style.transition = '';
+    }, 520);
     next.scrollTop = 0;
-    next.classList.add('is-active');
+    next.style.transform = ''; next.style.opacity = ''; next.style.transition = '';
+    next.classList.remove('from-right', 'from-left');
+    void next.offsetWidth;
+    next.classList.add('is-active', dir);
+    setTimeout(() => next.classList.remove(dir), 800);
     cur = n;
     ui();
     scrollPx();
@@ -518,13 +543,49 @@ body::after{content:"";position:fixed;inset:-50%;pointer-events:none;z-index:50;
     if (Math.abs(wheelAcc) > 60) { go(cur + Math.sign(wheelAcc)); wheelAcc = 0; wheelLock = now + 900; }
   }, { passive: true });
 
-  // swipe
-  let tx = 0, ty = 0;
-  $('stage').addEventListener('touchstart', e => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, { passive: true });
-  $('stage').addEventListener('touchend', e => {
-    const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
-    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.4) go(cur + (dx < 0 ? 1 : -1));
+  // swipe: the slide follows the finger, then commits or springs back
+  const stage = $('stage');
+  let sx = 0, sy = 0, st = 0, dx = 0, axis = null, dragEl = null;
+  stage.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1 || openOv()) return;
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
+    dx = 0; axis = null; dragEl = slides[cur];
   }, { passive: true });
+  stage.addEventListener('touchmove', e => {
+    if (!dragEl) return;
+    const mx = e.touches[0].clientX - sx, my = e.touches[0].clientY - sy;
+    if (!axis && (Math.abs(mx) > 8 || Math.abs(my) > 8)) {
+      axis = Math.abs(mx) > Math.abs(my) * 1.15 ? 'x' : 'y';
+      if (axis === 'x') { dragEl.style.transition = 'none'; dragEl.classList.add('dragging'); }
+    }
+    if (axis !== 'x') return;
+    e.preventDefault();
+    dx = mx;
+    const edge = (cur === 0 && dx > 0) || (cur === N - 1 && dx < 0);
+    const shown = edge ? dx * 0.25 : dx * 0.85;
+    dragEl.style.transform = `translate3d(${shown}px,0,0)`;
+    dragEl.style.opacity = String(1 - Math.min(Math.abs(shown) / stage.clientWidth, 1) * 0.6);
+  }, { passive: false });
+  function endDrag() {
+    if (!dragEl) return;
+    const el = dragEl; dragEl = null;
+    if (axis !== 'x') return;
+    el.classList.remove('dragging');
+    const w = stage.clientWidth, v = Math.abs(dx) / Math.max(1, Date.now() - st);
+    const target = cur + (dx < 0 ? 1 : -1);
+    if ((Math.abs(dx) > w * 0.2 || (v > 0.45 && Math.abs(dx) > 30)) && target >= 0 && target < N) {
+      el.style.transition = 'transform .4s cubic-bezier(.2,.7,.1,1), opacity .4s ease';
+      el.style.transform = `translate3d(${dx < 0 ? -w * 0.45 : w * 0.45}px,0,0)`;
+      el.style.opacity = '0';
+      go(target);
+    } else {
+      el.style.transition = 'transform .45s cubic-bezier(.2,.7,.1,1), opacity .45s ease';
+      el.style.transform = ''; el.style.opacity = '';
+      setTimeout(() => { el.style.transition = ''; }, 460);
+    }
+  }
+  stage.addEventListener('touchend', endDrag, { passive: true });
+  stage.addEventListener('touchcancel', endDrag, { passive: true });
 
   if (reduced) return;
 
